@@ -130,7 +130,6 @@ module.exports = settings => {
       isTesting = false;
       if(err) {
         throwError(next, 500);
-        return;
       } else {
         res.send(results[results.length-1]);
       }
