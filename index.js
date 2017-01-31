@@ -1,48 +1,58 @@
-var _ = require('lodash');
-var GoogleSpreadsheet = require('google-spreadsheet');
-var async = require('async');
+const _ = require('lodash');
+const GoogleSpreadsheet = require('google-spreadsheet');
+const series = require('async/series');
+
+const conforms = _.conforms({
+  sheetId: _.isString,
+  privateKey: _.isString,
+  clientEmail: _.isString
+});
+
+const throwError = (next, code) => {
+  let error;
+  if(code === 400) {
+    error = new Error('Bad Request');
+    error.status = code;
+  } else {
+    error = new Error('Internal Server Error');
+    error.status = 500;
+  }
+  next(error);
+};
 
 /**
- * set limitation for loopback application as middleware
+ * spreadsheets API middleware
  *
- * @param {number} [defaultLimit]
+ * @param {Object} [sheetId{string}, privateKey{string}, clientEmail{string}]
  * @return {Function} middleware
  * @public
  */
 
-module.exports = function(settings) {
-  var conforms = _.conforms({
-    sheetId: _.isString,
-    privateKey: _.isString,
-    clientEmail: _.isString
-  });
-  
-  // var settings = settings;
-  var doc = new GoogleSpreadsheet(settings.sheetId);
+module.exports = settings => {
 
-  //methods
-  var setAuth = function(step) {
+  let doc;
+  let isTesting = false;
+
+  const setAuth = step => {
     doc.useServiceAccountAuth({
       client_email: settings.clientEmail,
       private_key: settings.privateKey
     }, step);
   };
 
-  var getInfo = function(step) {
-    doc.getInfo(function(err, info) {
-      step();
-    });
+  const getInfo = cb => {
+    return step => {
+      doc.getInfo((err, info) => {
+        if(cb) {
+          cb(err, info, step);
+        }
+        step(err);
+      });
+    } 
   };
 
-  var testing = false;
-  var testWithSheets = function(step) {
-    testing = true;
-    if(!doc) {
-      var err = new Error('Bad Request');
-      err.status = 400;
-      step(err);
-    }
-    var result = {
+  const executeTest = step => {
+    let result = {
       setTitle: false,
       setHeaderRow: false,
       getRows: false,
@@ -52,103 +62,97 @@ module.exports = function(settings) {
       del: false
     };
     doc.addWorksheet({title: 'test' + Math.floor(Math.random() * 100000)}, function(err, sheet) {
-      async.series([
-        function(next) {
+      series([
+        next => {
           sheet.setTitle('changing title' + Math.floor(Math.random() * 100000), function(){
             result.setTitle = true;
             next();
           });
         },
-        function(next) {
+        next => {
           sheet.setHeaderRow(['hoge', 'fuga', 'piyopiyo', 'foobar'], function(){
             result.setHeaderRow = true;
             next();
           });
         },
-        function(next) {
+        next => {
           sheet.getRows({offset: 1, limit: 10}, function(){
             result.getRows = true;
             next();
           });
         },
-        function(next) {
+        next => {
           sheet.resize({rowCount: 20, colCount: 30}, function(){
             result.resize = true;
             next();
           });
         },
-        function(next) {
-          sheet.addRow({hoge: 'foo', fuga: 'bar', piyopiyo: 'haaa', foobar: 'foo'}, function(){
+        next => {
+          sheet.addRow({hoge: 'foo', fuga: 'bar', piyopiyo: 'haaa', foobar: 'foo'}, () => {
             result.addRow = true;
             next();
           });
         },
-        function(next) {
-          sheet.setTitle('test completed' + Math.floor(Math.random() * 100000), function(){
+        next => {
+          sheet.setTitle('test completed' + Math.floor(Math.random() * 100000), () => {
             result.setTitle = true;
             next();
           });
         },
-        function(next){ 
-          sheet.del(function(){
+        next => {
+          sheet.del(() => {
             result.del = true;
             next();
           });
         }
       ],
-      function(err) {
+      err => {
         step(err, result);
       });
     });
+  }
+
+  const testWithSheets = step => {
+    isTesting = true;
+    if(!doc) {
+      throwError(step, 400)
+    } else {
+      executeTest(step);
+    }
   };
 
   return function spreadsheetsMiddleware(req, res, next) {
     if (!conforms(settings)) {
-      var err = new Error('Bad Request');
-      err.status = 400;
-      next(err);
+      throwError(next, 400);
     }
-
-    var testComplete = function(err, results) {
+    doc = new GoogleSpreadsheet(settings.sheetId);
+    const testComplete = (err, results) => {
+      isTesting = false;
       if(err) {
-        var error = new Error('Internal Server Error');
-        error.status = 500;
-        next(error);
+        throwError(next, 500);
         return;
       } else {
         res.send(results[results.length-1]);
-        testing = false;
       }
     };
 
     if(req.method === 'POST' && ((req.path === '/' && req.body._id) || (/\/.+/.test(req.path) && req.body))) {
-      var _id, _data;
-      _id = req.path !== '/' ? /\/(.[^\/]+)(\/.*)*/.exec(req.path)[1] : req.body._id;
-      _data = _.omit(req.body, ['_id']);
-      var workSheet;
+      const _id = req.path !== '/' ? /\/(.[^\/]+)(\/.*)*/.exec(req.path)[1] : req.body._id;
+      const _data = _.omit(req.body, ['_id']);
+      let workSheet;
 
       if(!doc || !_id || !_data) {
-        var error = new Error('Bad Request');
-        error.status = 400;
-        next(error);
+        throwError(next, 400);
       } else {
-        async.series([
+        series([
           setAuth,
-          function(step){
-            //cheking sheet for model
-            doc.getInfo(function(err, info){
-              if(err) {
-                step(err);
-              } else {
-                workSheet = _.find(info.worksheets, ['title', _id]);
-                step();
-              }
-            });
-          },
-          function(step){
+          getInfo((err, info, step) => {
+            workSheet = _.find(info.worksheets, ['title', _id]);
+          }),
+          step => {
             // Add workSheet if needed
             if(!workSheet) {
-              doc.addWorksheet({title: _id, rowCount: 2, colCount: 100, headers: Object.keys(_data)}, function(err, sheet) {
+              doc.addWorksheet({title: _id, rowCount: 2, colCount: 100, headers: Object.keys(_data)}, (err, sheet) => {
                 if(err) {
                   step(err);
                 } else {
@@ -160,48 +164,43 @@ module.exports = function(settings) {
               step();
             }
           },
-          function(step) {
+          step => {
             // Setting Headers
             if(workSheet) {
-              workSheet.setHeaderRow(Object.keys(_data), function(){
+              workSheet.setHeaderRow(Object.keys(_data), () => {
                 step();
               });
             } else {
               step();
             }
           },
-          function(step) {
+          step => {
             // Add New Row
             if(workSheet) {
-              workSheet.addRow(_data, function(){
+              workSheet.addRow(_data, ()=> {
                 step();
               });
             }
           }
         ],
-        function(err, results) {
+        (err, results) => {
           if(err) {
-            err.status = 400;
-            next(err);
+            throwError(next, 500);
           } else {
-            var record = {};
+            let record = {};
             record[_id] = _data;
             res.send(record);
           }
         });
       }
     } else if(req.path === '/test' && req.method === 'GET') {
-      if(testing || !doc) {
-        var error = new Error('Already Running Connection Test');
-        error.status = 400;
-        next(error);
+      if(isTesting || !doc) {
+        throwError(next, 400);
       } else {
-        async.series([setAuth, getInfo, testWithSheets], testComplete);
+        series([setAuth, getInfo(), testWithSheets], testComplete);
       }
     } else {
-      var error = new Error('Bad Request');
-      error.status = 400;
-      next(error);
+        throwError(next, 400);
     }
   }
 
