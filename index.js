@@ -33,10 +33,13 @@ module.exports = settings => {
   let doc;
   let isTesting = false;
 
+  // properly parse escaped multi line string
+  const _settings = _.cloneDeepWith(settings, opts => _.mapValues(opts, str => str.replace(/\\n/g, '\n')));
+
   const setAuth = step => {
     doc.useServiceAccountAuth({
-      client_email: settings.clientEmail,
-      private_key: settings.privateKey
+      client_email: _settings.clientEmail,
+      private_key: _settings.privateKey
     }, step);
   };
 
@@ -122,10 +125,10 @@ module.exports = settings => {
   };
 
   return function spreadsheetsMiddleware(req, res, next) {
-    if (!conforms(settings)) {
+    if (!conforms(_settings)) {
       throwError(next, 400);
     }
-    doc = new GoogleSpreadsheet(settings.sheetId);
+    doc = new GoogleSpreadsheet(_settings.sheetId);
     const testComplete = (err, results) => {
       isTesting = false;
       if(err) {
