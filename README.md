@@ -42,7 +42,7 @@ app.use('/spreadsheets', spreadsheetsMiddlware(spreadsheetSettings));
 ```javascript
 // requestBody
 {
-  _id: 'workSheetId', // --- required
+  _id: 'workSheetTitle', // --- required
   col1: 'data1',
   col2: 'data2',
   col3: 'data3',
@@ -54,8 +54,9 @@ app.use('/spreadsheets', spreadsheetsMiddlware(spreadsheetSettings));
 
 * [POST] ```/spreadsheets/:worksheetTitle``` - add data to worksheet
 ```javascript
+// requestBody
 {
-  //_id: 'workSheetId', --- ignored
+  //_id: 'workSheetTitle', --- ignored
   col1: 'data1',
   col2: 'data2',
   col3: 'data3',

@@ -11,7 +11,6 @@ var async = require('async');
  */
 
 module.exports = function(settings) {
-
   var conforms = _.conforms({
     sheetId: _.isString,
     privateKey: _.isString,
@@ -56,49 +55,42 @@ module.exports = function(settings) {
       async.series([
         function(next) {
           sheet.setTitle('changing title' + Math.floor(Math.random() * 100000), function(){
-            console.log('set title');
             result.setTitle = true;
             next();
           });
         },
         function(next) {
           sheet.setHeaderRow(['hoge', 'fuga', 'piyopiyo', 'foobar'], function(){
-            console.log('set headerRow');
             result.setHeaderRow = true;
             next();
           });
         },
         function(next) {
           sheet.getRows({offset: 1, limit: 10}, function(){
-            console.log('got rows');
             result.getRows = true;
             next();
           });
         },
         function(next) {
           sheet.resize({rowCount: 20, colCount: 30}, function(){
-            console.log('resized sheet');
             result.resize = true;
             next();
           });
         },
         function(next) {
           sheet.addRow({hoge: 'foo', fuga: 'bar', piyopiyo: 'haaa', foobar: 'foo'}, function(){
-            console.log('added row');
             result.addRow = true;
             next();
           });
         },
         function(next) {
           sheet.setTitle('test completed' + Math.floor(Math.random() * 100000), function(){
-            console.log('re-set title');
             result.setTitle = true;
             next();
           });
         },
         function(next){ 
           sheet.del(function(){
-            console.log('deleted sheet');
             result.del = true;
             next();
           });
@@ -131,17 +123,12 @@ module.exports = function(settings) {
 
     if(req.method === 'POST' && ((req.path === '/' && req.body._id) || (/\/.+/.test(req.path) && req.body))) {
       var _id, _data;
-      if(req.path !== '/') {
-        _id = /\/(.+)/.exec(req.path)[0];
-        _data = req.body;
-      } else {
-        _id = req.body._id;
-        _data = _.omit(req.body, ['_id']);
-      }
+      _id = req.path !== '/' ? /\/(.[^\/]+)(\/.*)*/.exec(req.path)[1] : req.body._id;
+      _data = _.omit(req.body, ['_id']);
       var workSheet;
 
-      if(!doc) {
-        var error = new Error('Already Running Connection Test');
+      if(!doc || !_id || !_data) {
+        var error = new Error('Bad Request');
         error.status = 400;
         next(error);
       } else {
@@ -150,11 +137,10 @@ module.exports = function(settings) {
           function(step){
             //cheking sheet for model
             doc.getInfo(function(err, info){
-              if(err){
+              if(err) {
                 step(err);
               } else {
                 workSheet = _.find(info.worksheets, ['title', _id]);
-                console.log(workSheet);
                 step();
               }
             });
@@ -162,8 +148,7 @@ module.exports = function(settings) {
           function(step){
             // Add workSheet if needed
             if(!workSheet) {
-              doc.addWorksheet({title: _id, rowCount: 1000, colCount: 100, headers: Object.keys(_data)}, function(err, sheet) {
-                console.log(err, sheet);
+              doc.addWorksheet({title: _id, rowCount: 2, colCount: 100, headers: Object.keys(_data)}, function(err, sheet) {
                 if(err) {
                   step(err);
                 } else {
@@ -206,7 +191,6 @@ module.exports = function(settings) {
         });
       }
     } else if(req.path === '/test' && req.method === 'GET') {
-      console.log('testing GoogleSpreadsheet API');
       if(testing || !doc) {
         var error = new Error('Already Running Connection Test');
         error.status = 400;
@@ -215,7 +199,7 @@ module.exports = function(settings) {
         async.series([setAuth, getInfo, testWithSheets], testComplete);
       }
     } else {
-      var error = new Error('Already Running Connection Test');
+      var error = new Error('Bad Request');
       error.status = 400;
       next(error);
     }
