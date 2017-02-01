@@ -32,6 +32,7 @@ module.exports = settings => {
 
   let doc;
   let isTesting = false;
+  let headerRow;
 
   // properly parse escaped multi line string
   // const _settings = _.cloneDeepWith(settings, opts => _.mapValues(opts, str => str.replace(/\\+n/g, '\n')));
@@ -170,24 +171,27 @@ module.exports = settings => {
           step => {
             // Setting Headers
             if(workSheet) {
-              let headerRow;
               series([
                 next => {
-                  workSheet.getCells({'min-row': 1, 'max-row': 1, 'return-empty': false}, (err, cells) => {
-                    headerRow = _.cloneDeepWith(cells, targets => {
-                      return _.uniq(_.concat(_.map(targets, 'value'), Object.keys(_data)));
+                  if(headerRow && _.isArray(headerRow)) {
+                    headerRow =  _.uniq(_.concat(headerRow, Object.keys(_data)));
+                    next();
+                  } else {
+                    workSheet.getCells({'min-row': 1, 'max-row': 1, 'return-empty': false}, (err, cells) => {
+                      headerRow = _.cloneDeepWith(cells, targets => {
+                        return _.uniq(_.concat(_.map(targets, 'value'), Object.keys(_data)));
+                      });
+                      next(err);
                     });
-                    next(err);
-                  });
+                  }
                 },
                 next => {
                   workSheet.setHeaderRow(headerRow, () => {
                     next();
                   });
-                }],
-              err => {
-                step(err);
-              });
+                }], err => {
+                  step(err);
+                });
             } else {
               step();
             }
