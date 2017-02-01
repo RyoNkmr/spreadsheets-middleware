@@ -34,7 +34,8 @@ module.exports = settings => {
   let isTesting = false;
 
   // properly parse escaped multi line string
-  const _settings = _.cloneDeepWith(settings, opts => _.mapValues(opts, str => str.replace(/\\+n/g, '\n')));
+  // const _settings = _.cloneDeepWith(settings, opts => _.mapValues(opts, str => str.replace(/\\+n/g, '\n')));
+  const _settings = settings;
 
   const setAuth = step => {
     doc.useServiceAccountAuth({
