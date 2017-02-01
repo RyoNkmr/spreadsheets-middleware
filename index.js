@@ -175,8 +175,7 @@ module.exports = settings => {
                 next => {
                   workSheet.getCells({'min-row': 1, 'max-row': 1, 'return-empty': false}, (err, cells) => {
                     headerRow = _.cloneDeepWith(cells, targets => {
-                      const row =  _.uniq(_.concat(_.map(targets, 'value'), Object.keys(_data)));
-                      return row;
+                      return _.uniq(_.concat(_.map(targets, 'value'), Object.keys(_data)));
                     });
                     next(err);
                   });
