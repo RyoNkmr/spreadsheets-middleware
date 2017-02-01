@@ -21,7 +21,7 @@ const throwError = (next, code) => {
 };
 
 /**
- * spreadsheets API middleware
+ * spreadsheets Connection Test middleware
  *
  * @param {Object} [sheetId{string}, privateKey{string}, clientEmail{string}]
  * @return {Function} middleware
@@ -32,7 +32,6 @@ module.exports = settings => {
 
   let doc;
   let isTesting = false;
-  let headerRow;
 
   // properly parse escaped multi line string
   // const _settings = _.cloneDeepWith(settings, opts => _.mapValues(opts, str => str.replace(/\\+n/g, '\n')));
@@ -45,19 +44,15 @@ module.exports = settings => {
     }, step);
   };
 
-  const getInfo = cb => {
-    return step => {
-      doc.getInfo((err, info) => {
-        if(cb) {
-          cb(err, info, step);
-        }
-        step(err);
-      });
-    } 
+  const getInfo = step => {
+    doc.getInfo((err, info) => {
+      step(err);
+    });
   };
 
   const executeTest = step => {
     let result = {
+      addWorksheet: false,
       setTitle: false,
       setHeaderRow: false,
       getRows: false,
@@ -67,6 +62,7 @@ module.exports = settings => {
       del: false
     };
     doc.addWorksheet({title: 'test' + Math.floor(Math.random() * 100000)}, function(err, sheet) {
+      result.addWorksheet = true;
       series([
         next => {
           sheet.setTitle('changing title' + Math.floor(Math.random() * 100000), function(){
@@ -126,100 +122,23 @@ module.exports = settings => {
     }
   };
 
-  return function spreadsheetsMiddleware(req, res, next) {
+  return function spreadsheetsConnectionTestMiddleware(req, res, next) {
     if (!conforms(_settings)) {
       throwError(next, 400);
     }
     doc = new GoogleSpreadsheet(_settings.sheetId);
-    const testComplete = (err, results) => {
-      isTesting = false;
-      if(err) {
-        throwError(next, 500);
-      } else {
-        res.send(results[results.length-1]);
-      }
-    };
-
-    if(req.method === 'POST' && ((req.path === '/' && req.body._id) || (/\/.+/.test(req.path) && req.body))) {
-      const _id = req.path !== '/' ? /\/(.[^\/]+)(\/.*)*/.exec(req.path)[1] : req.body._id;
-      const _data = _.omit(req.body, ['_id']);
-      let workSheet;
-
-      if(!doc || !_id || !_data) {
-        throwError(next, 400);
-      } else {
-        series([
-          setAuth,
-          getInfo((err, info, step) => {
-            workSheet = _.find(info.worksheets, ['title', _id]);
-          }),
-          step => {
-            // Add workSheet if needed
-            if(!workSheet) {
-              doc.addWorksheet({title: _id, rowCount: 2, colCount: 100, headers: Object.keys(_data)}, (err, sheet) => {
-                if(err) {
-                  step(err);
-                } else {
-                  workSheet = sheet;
-                  step();
-                }
-              });
-            } else {
-              step();
-            }
-          },
-          step => {
-            // Setting Headers
-            if(workSheet) {
-              series([
-                next => {
-                  if(headerRow && _.isArray(headerRow)) {
-                    headerRow =  _.uniq(_.concat(headerRow, Object.keys(_data)));
-                    next();
-                  } else {
-                    workSheet.getCells({'min-row': 1, 'max-row': 1, 'return-empty': false}, (err, cells) => {
-                      headerRow = _.cloneDeepWith(cells, targets => {
-                        return _.uniq(_.concat(_.map(targets, 'value'), Object.keys(_data)));
-                      });
-                      next(err);
-                    });
-                  }
-                },
-                next => {
-                  workSheet.setHeaderRow(headerRow, () => {
-                    next();
-                  });
-                }], err => {
-                  step(err);
-                });
-            } else {
-              step();
-            }
-          },
-          step => {
-            // Add New Row
-            if(workSheet) {
-              workSheet.addRow(_data, ()=> {
-                step();
-              });
-            }
-          }
-        ],
-        (err, results) => {
-          if(err) {
-            throwError(next, 500);
-          } else {
-            let record = {};
-            record[_id] = _data;
-            res.send(record);
-          }
-        });
-      }
-    } else if(req.path === '/test' && req.method === 'GET') {
+    if(req.path === '/test' && req.method === 'POST') {
       if(isTesting || !doc) {
         throwError(next, 400);
       } else {
-        series([setAuth, getInfo(), testWithSheets], testComplete);
+        series([setAuth, getInfo, testWithSheets], (err, results) => {
+          isTesting = false;
+          if(err) {
+            throwError(next, 500);
+          } else {
+            res.send(results[results.length-1]);
+          }
+        });
       }
     } else {
         throwError(next, 400);
