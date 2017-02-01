@@ -35,7 +35,17 @@ app.use('/spreadsheets', spreadsheetsMiddlware(spreadsheetSettings));
     1. delete worksheet
 
 ```javascript
-// no need for body nor params
+// no need for Request body nor params
+
+// but response like
+{
+  setTitle: true,
+  setHeaderRow: true,
+  getRows: true,
+  resize: true,
+  addRow: true,
+  del: true
+}
 ```
 
 * [POST] ```/spreadsheets``` - add data to worksheet(*children of sheet*), ```_id``` stands worksheet title

@@ -170,8 +170,24 @@ module.exports = settings => {
           step => {
             // Setting Headers
             if(workSheet) {
-              workSheet.setHeaderRow(Object.keys(_data), () => {
-                step();
+              let headerRow;
+              series([
+                next => {
+                  workSheet.getCells({'min-row': 1, 'max-row': 1, 'return-empty': false}, (err, cells) => {
+                    headerRow = _.cloneDeepWith(cells, targets => {
+                      const row =  _.uniq(_.concat(_.map(targets, 'value'), Object.keys(_data)));
+                      return row;
+                    });
+                    next(err);
+                  });
+                },
+                next => {
+                  workSheet.setHeaderRow(headerRow, () => {
+                    next();
+                  });
+                }],
+              err => {
+                step(err);
               });
             } else {
               step();
